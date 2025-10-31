@@ -1,11 +1,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include "database.h"
 #include "types.h"
 
 static Account account_buffer;
 static User user_buffer;
-static int fetch_and_increment_id(int fd) {
+int fetch_and_increment_id(int fd) {
     LoanHeader header;
     ssize_t bytes_read = read(fd, &header, sizeof(LoanHeader));
     if (bytes_read != sizeof(LoanHeader)) {
@@ -23,8 +25,26 @@ static int fetch_and_increment_id(int fd) {
     fsync(fd);
     return id;
 }
+
+User *find_user_by_username(const char *username)
+{
+    int fd = open("data/users.dat", O_RDONLY);
+    if (fd == -1) return NULL;
+    lseek(fd, sizeof(UserHeader), SEEK_SET);
+    User u;
+    while (read(fd, &u, sizeof(User)) == sizeof(User)) {
+        if (strcmp(u.username, username) == 0) {
+            user_buffer = u;
+            close(fd);
+            return &user_buffer;
+        }
+    }
+    close(fd);
+    return NULL;
+}
+
 Account *find_account_by_user_id(int user_id) {
-    int fd = open("accounts.dat", O_RDONLY);
+    int fd = open("data/accounts.dat", O_RDONLY);
     if (fd == -1) return NULL;
 
     struct flock lock = { 
@@ -53,7 +73,7 @@ Account *find_account_by_user_id(int user_id) {
     return NULL;
 }
 User *find_user_by_id(int id) {
-    int fd = lock_file("users.dat", F_RDLCK);
+    int fd = lock_file("data/users.dat", F_RDLCK);
     if (fd == -1) return NULL;
     lseek(fd, sizeof(UserHeader), SEEK_SET);
     User user;
@@ -72,7 +92,7 @@ int lock_file(const char *filename, int type) {
     int fd = open(filename, O_RDWR | O_CREAT, 0644);
     if (fd == -1) return -1;
 
-    struct flock lock = { .l_type = type, .l_whence = SEEK_SET, .l_start = 0, .l_len = 0 };
+    struct flock lock = { .l_type = type, .l_whence = SEEK_SET, .l_start = 0, .l_len = 0, .l_pid=getpid() };
     if (fcntl(fd, F_SETLKW, &lock) == -1) {
         close(fd);
         return -1;

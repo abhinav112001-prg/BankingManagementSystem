@@ -15,11 +15,11 @@ getTransactionHistory().    //transactions
 #include <stdio.h>
 #include <unistd.h>
 #include "types.h"
-#include "helpers.c"
-#include "database.c"
+#include "helpers.h"
+#include "database.h"
 
 int getBalance(int customer_id, int socket_fd) {
-    int accounts_fd = lock_file("accounts.dat", F_WRLCK);
+    int accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
     if (accounts_fd == -1) {
         send_response(socket_fd, "Failed to lock accounts file\n");
         return -1;
@@ -54,7 +54,7 @@ int addFeedback(int customer_id, int socket_fd){
     };
     strncpy(fdbk.message, msg, MAX_FEEDBACK_LEN - 1);
     //open file
-    int fd = open("feedback.dat", O_RDWR|O_CREAT, 0644);
+    int fd = open("data/feedback.dat", O_RDWR|O_CREAT, 0644);
     if (fd == -1) {
         send_response(socket_fd, "Failed to open feedback file\n");
         return -1;
@@ -97,9 +97,9 @@ int applyLoan(int customer_id, int socket_fd) {
         return -1;
     }
     double loanAmt;
-    printf("Enter loan amount: \n");
-    scanf("%lf", loanAmt);
-    if (read_double_from_socket(socket_fd, &loanAmt, sizeof(loanAmt)) != 0) {
+    // printf("Enter loan amount: \n");
+    // scanf("%lf", loanAmt);
+    if (read_amount_from_socket(socket_fd) != 0) {
         send_response(socket_fd, "Error reading loanAmt username\n");
         return -1;
     }
@@ -120,7 +120,7 @@ int applyLoan(int customer_id, int socket_fd) {
 
     // Open file
     int fd;
-    fd = open("loans.dat", O_RDWR | O_CREAT, 0644);
+    fd = open("data/loans.dat", O_RDWR | O_CREAT, 0644);
     if (fd == -1) {
         send_response(socket_fd, "Failed to open loans file\n");
         return -1;
@@ -157,7 +157,7 @@ int viewTransactionHistory(int user_id, int socket_fd) {
     int bytes_written;
 
     // Lock accounts.dat to get account_id
-    accounts_fd = lock_file("accounts.dat", F_RDLCK);
+    accounts_fd = lock_file("data/accounts.dat", F_RDLCK);
     if (accounts_fd == -1) {
         send_response(socket_fd, "Failed to lock accounts file\n");
         return -1;
@@ -174,7 +174,7 @@ int viewTransactionHistory(int user_id, int socket_fd) {
     unlock_file(accounts_fd);
 
     // Lock transactions.dat for reading
-    transactions_fd = lock_file("transactions.dat", F_RDLCK);
+    transactions_fd = lock_file("data/transactions.dat", F_RDLCK);
     if (transactions_fd == -1) {
         send_response(socket_fd, "Failed to lock transactions file\n");
         return -1;
@@ -219,7 +219,7 @@ int viewTransactionHistory(int user_id, int socket_fd) {
 }
 
 int exitCustomer(int customer_id, int socket_fd) {
-    int fd = lock_file("sessions.dat", F_WRLCK);
+    int fd = lock_file("data/sessions.dat", F_WRLCK);
     if (fd == -1) {
         send_response(socket_fd, "Failed to lock sessions file\n");
         return -1;
@@ -231,7 +231,7 @@ int exitCustomer(int customer_id, int socket_fd) {
             lseek(fd, -sizeof(Session), SEEK_CUR);
             write(fd, &session, sizeof(Session));
             fsync(fd);
-            break;
+            // break;
         }
     }
     unlock_file(fd);

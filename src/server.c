@@ -11,34 +11,46 @@
 #include "database.h"
 #include "helpers.h"
 #include "customer.h"
+#include "employee.h"
+#include "admin.h"
+#include "transactions.h"
 
 #define PORT 8080
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
 
 // Initialize database files
-void init_database() {
-    const char *files[] = {
-        "users.dat", 
-        "accounts.dat", 
-        "transactions.dat", 
-        "loans.dat", 
-        "feedback.dat", 
+void init_database(void)
+{
+    const char *filenames[] = {
+        "users.dat",
+        "accounts.dat",
+        "transactions.dat",
+        "loans.dat",
+        "feedback.dat",
         "sessions.dat"
     };
+
+    const char *data_dir = "data";
+    char path[256];
+
+    
     for (int i=0; i<6; i++) {
-        int fd = open(files[i], O_RDWR | O_CREAT, 0644);
+        snprintf(path, sizeof(path), "%s/%s", data_dir, filenames[i]);
+
+        int fd = open(path, O_RDWR | O_CREAT, 0644);
         if (fd == -1) {
             perror("Failed to create database file");
+            fprintf(stderr, "File: %s\n", path);
             exit(1);
         }
-        // Write header if file is empty
-        off_t size = lseek(fd, 0, SEEK_END);
-        if (size == 0) {
-            UserHeader header = { .next_id = 1, .record_count = 0 }; // Works for all headers
+
+        if (lseek(fd, 0, SEEK_END) == 0) {
+            UserHeader header = { .next_id = 1, .record_count = 0 };
             write(fd, &header, sizeof(UserHeader));
             fsync(fd);
         }
+
         close(fd);
     }
 }
@@ -46,7 +58,7 @@ void init_database() {
 void create_initial_admin() {
     if (find_user_by_username("admin") != NULL) return;
 
-    int fd = open("users.dat", O_RDWR);
+    int fd = open("data/users.dat", O_RDWR|O_CREAT);
     if (fd == -1) return;
 
     UserHeader hdr = { .next_id = 1, .record_count = 0 };
@@ -79,7 +91,7 @@ int authenticate_user(const char *username, const char *password, int *user_id, 
 
 // Add session
 int add_session(int user_id) {
-    int fd = lock_file("sessions.dat", F_WRLCK);
+    int fd = lock_file("data/sessions.dat", F_WRLCK);
     if (fd == -1) return -1;
     Session session;
     while (read(fd, &session, sizeof(Session)) == sizeof(Session)) {
@@ -109,6 +121,18 @@ static int read_full_line(int fd, char *buf, size_t max) {
     return 0;
 }
 
+// Helper: Convert enum Role to string
+static const char* role_to_string(enum Role role) {
+    switch (role) {
+        case ROLE_CUSTOMER: return "CUSTOMER";
+        case ROLE_EMPLOYEE: return "EMPLOYEE";
+        case ROLE_MANAGER:  return "MANAGER";
+        case ROLE_ADMIN:    return "ADMIN";
+        default:            return "UNKNOWN";
+    }
+}
+
+
 // Client handler
 void *handle_client(void *arg) {
     int client_fd = *(int *)arg;
@@ -125,17 +149,26 @@ void *handle_client(void *arg) {
             return NULL;
         }
 
-        char cmd[32], username[MAX_USERNAME_LEN], password[MAX_PASSWORD_LEN];
-        if (sscanf(buffer, "%s %s %s", cmd, username, password) != 3)
+        char cmd[32], role_str[32], username[MAX_USERNAME_LEN], password[MAX_PASSWORD_LEN];
+        
+        // New format: LOGIN <ROLE> <USER> <PASS>
+        if (sscanf(buffer, "%s %s %s %s", cmd, role_str, username, password) != 4)
             continue;
 
         if (strcmp(cmd, "LOGIN") != 0) {
-            send_response(client_fd, "Send LOGIN <user> <pass>\n");
+            send_response(client_fd, "Send LOGIN <ROLE> <user> <pass>\n");
             continue;
         }
 
         if (authenticate_user(username, password, &user_id, &role) != 0) {
-            send_response(client_fd, "Login failed\n");
+            send_response(client_fd, "Login failed: Invalid username or password\n");
+            continue;
+        }
+
+        // New check: Validate the role
+        const char *actual_role_str = role_to_string(role);
+        if (strcmp(role_str, actual_role_str) != 0) {
+            send_response(client_fd, "Login failed: Role mismatch\n");
             continue;
         }
 
@@ -144,18 +177,16 @@ void *handle_client(void *arg) {
             continue;
         }
 
-        const char *role_str = (role == ROLE_CUSTOMER) ? "CUSTOMER" :
-                               (role == ROLE_EMPLOYEE) ? "EMPLOYEE" :
-                               (role == ROLE_MANAGER)  ? "MANAGER"  : "ADMIN";
-        snprintf(buffer, sizeof(buffer), "Login successful ROLE_%s\n", role_str);
-        send_response(client_fd, buffer);
-        break;
+        // Simplified success response
+        send_response(client_fd, "Login successful\n");
+        break; // Exit login loop
     }
 
     // COMMAND LOOP (role-based)
     while (1) {
         if (read_full_line(client_fd, buffer, sizeof(buffer)) < 0)
             break;                                   // client disconnected
+        
         if (role == ROLE_CUSTOMER) {
             char cmd[32];
             sscanf(buffer, "%s", cmd);
@@ -211,8 +242,10 @@ void *handle_client(void *arg) {
         }
 
         else if (role == ROLE_MANAGER) {
-            char cmd[32], a1[64] = {0}, a2[64] = {0};
-            sscanf(buffer, "%s %s %s", cmd, a1, a2);
+            // ***THIS IS THE FIX***
+            // We use a simple sscanf for consistency
+            char cmd[32];
+            sscanf(buffer, "%s", cmd);
 
             if (strcmp(cmd, "ADD_CUST") == 0)          addNewCustomer(client_fd);
             else if (strcmp(cmd, "EDIT_CUST") == 0)    editCustomerDetails(client_fd);
@@ -220,6 +253,10 @@ void *handle_client(void *arg) {
             else if (strcmp(cmd, "LOAN_DECIDE") == 0)  approveRejectLoans(user_id, client_fd);
             else if (strcmp(cmd, "CUST_TRANS") == 0)   viewCustomerTransactions(client_fd);
             else if (strcmp(cmd, "ASSIGN_LOAN") == 0) {
+                // This is the one exception. The client *did* send args.
+                // We re-parse the *original buffer* to get them.
+                char a1[64], a2[64];
+                sscanf(buffer, "%*s %s %s", a1, a2); // %*s skips the command
                 int loan_id = atoi(a1);
                 int emp_id  = atoi(a2);
                 assignLoanToEmployee(user_id, loan_id, emp_id, client_fd);

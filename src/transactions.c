@@ -7,8 +7,8 @@
 #include <unistd.h>
 #include "types.h"
 #include "transactions.h"
-#include "helpers.c"
-#include "database.c"
+#include "helpers.h"
+#include "database.h"
 
 int deposit (int customer_id, double amount, int socket_fd) {
     int accounts_fd, transactions_fd;
@@ -23,7 +23,7 @@ int deposit (int customer_id, double amount, int socket_fd) {
     }
 
     // Lock accounts.dat
-    accounts_fd = lock_file("accounts.dat", F_WRLCK);
+    accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
     if (accounts_fd == -1) {
         send_response(socket_fd, "Failed to lock accounts file\n");
         return -1;
@@ -49,10 +49,10 @@ int deposit (int customer_id, double amount, int socket_fd) {
     unlock_file(accounts_fd);
 
     // Log transaction
-    transactions_fd = lock_file("transactions.dat", F_WRLCK);
+    transactions_fd = lock_file("data/transactions.dat", F_WRLCK);
     if (transactions_fd == -1) {
         // Rollback: Subtract amount back
-        accounts_fd = lock_file("accounts.dat", F_WRLCK);
+        accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
         update_account(accounts_fd, account, account->balance - amount);
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to log transaction\n");
@@ -99,7 +99,7 @@ int withdraw(int customer_id, double amount, int socket_fd) {
     }
 
     // Lock accounts.dat
-    accounts_fd = lock_file("accounts.dat", F_WRLCK);
+    accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
     if (accounts_fd == -1) {
         send_response(socket_fd, "Failed to lock accounts file\n");
         return -1;
@@ -132,10 +132,10 @@ int withdraw(int customer_id, double amount, int socket_fd) {
     unlock_file(accounts_fd);
 
     // Log transaction
-    transactions_fd = lock_file("transactions.dat", F_WRLCK);
+    transactions_fd = lock_file("data/transactions.dat", F_WRLCK);
     if (transactions_fd == -1) {
         // Rollback: Add amount back
-        accounts_fd = lock_file("accounts.dat", F_WRLCK);
+        accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
         update_account(accounts_fd, account, account->balance + amount);
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to log transaction\n");
@@ -170,7 +170,7 @@ int withdraw(int customer_id, double amount, int socket_fd) {
 
 // Helper: Log transaction (can be reused)
 int log_transaction(int account_id, const char *description, double amount, double new_balance) {
-    int fd = lock_file("transactions.dat", F_WRLCK);
+    int fd = lock_file("data/transactions.dat", F_WRLCK);
     if (fd == -1) return -1;
 
     TransactionHeader header;
@@ -226,7 +226,7 @@ int transferFunds(int customer_id, int socket_fd) {
     }
 
     // Validate recipient
-    users_fd = lock_file("users.dat", F_RDLCK);
+    users_fd = lock_file("data/users.dat", F_RDLCK);
     if (users_fd == -1) {
         send_response(socket_fd, "Failed to lock users file\n");
         return -1;
@@ -246,7 +246,7 @@ int transferFunds(int customer_id, int socket_fd) {
     // free(recipient_user); // If find_user_by_username uses malloc
 
     // Lock accounts.dat
-    accounts_fd = lock_file("accounts.dat", F_WRLCK);
+    accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
     if (accounts_fd == -1) {
         send_response(socket_fd, "Failed to lock accounts file\n");
         return -1;

@@ -17,13 +17,27 @@ int addEmployee(int socket_fd) {
     char username[MAX_USERNAME_LEN];
     char password[MAX_PASSWORD_LEN];
 
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0 ||
-        read_string_from_socket(socket_fd, password, MAX_PASSWORD_LEN) != 0) {
-        send_response(socket_fd, "Error reading input\n");
+    /* Read username */
+    if (read_line_from_socket(socket_fd, username, sizeof(username)) != 0) {
+        send_response(socket_fd, "Error reading username\n");
+        return -1;
+    }
+    username[strcspn(username, "\n")] = '\0';
+
+    /* Read password */
+    if (read_line_from_socket(socket_fd, password, sizeof(password)) != 0) {
+        send_response(socket_fd, "Error reading password\n");
+        return -1;
+    }
+    password[strcspn(password, "\n")] = '\0';
+
+    /* Validate */
+    if (strlen(username) == 0 || strlen(password) == 0) {
+        send_response(socket_fd, "Username and password required\n");
         return -1;
     }
 
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) {
         send_response(socket_fd, "Failed to lock users.dat\n");
         return -1;
@@ -54,7 +68,7 @@ int addEmployee(int socket_fd) {
     fsync(users_fd);
     unlock_file(users_fd);
 
-    send_response(socket_fd, "Employee added successfully\n");
+    send_response(socket_fd, "Employee added successfully!\n");
     return 0;
 }
 
@@ -65,13 +79,27 @@ int addManager(int socket_fd) {
     char username[MAX_USERNAME_LEN];
     char password[MAX_PASSWORD_LEN];
 
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0 ||
-        read_string_from_socket(socket_fd, password, MAX_PASSWORD_LEN) != 0) {
-        send_response(socket_fd, "Error reading input\n");
+    /* Read username */
+    if (read_line_from_socket(socket_fd, username, sizeof(username)) != 0) {
+        send_response(socket_fd, "Error reading username\n");
+        return -1;
+    }
+    username[strcspn(username, "\n")] = '\0';
+
+    /* Read password */
+    if (read_line_from_socket(socket_fd, password, sizeof(password)) != 0) {
+        send_response(socket_fd, "Error reading password\n");
+        return -1;
+    }
+    password[strcspn(password, "\n")] = '\0';
+
+    /* Validate */
+    if (strlen(username) == 0 || strlen(password) == 0) {
+        send_response(socket_fd, "Username and password required\n");
         return -1;
     }
 
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) {
         send_response(socket_fd, "Failed to lock users.dat\n");
         return -1;
@@ -110,7 +138,7 @@ int addManager(int socket_fd) {
 /* 3. View All Users                                                     */
 /* --------------------------------------------------------------------- */
 int viewAllUsers(int socket_fd) {
-    int fd = lock_file("users.dat", F_RDLCK);
+    int fd = lock_file("data/users.dat", F_RDLCK);
     if (fd == -1) {
         send_response(socket_fd, "Failed to lock users.dat\n");
         return -1;
@@ -157,7 +185,7 @@ int deactivateUser(int admin_id, int socket_fd) {
         return -1;
     }
 
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) {
         send_response(socket_fd, "Failed to lock users.dat\n");
         return -1;
@@ -200,7 +228,7 @@ int reactivateUser(int admin_id, int socket_fd) {
         return -1;
     }
 
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) {
         send_response(socket_fd, "Failed to lock users.dat\n");
         return -1;

@@ -7,9 +7,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "types.h"
-#include "helpers.c"
-#include "database.c"
+#include "helpers.h"
+#include "database.h"
 #include "transactions.h"
+#include "customer.h"
 #include "employee.h"
 
 // addNewCustomer()
@@ -18,27 +19,40 @@
 // viewAssignedLoanApplications()
 // viewCustomerTransactions()
 
-/* --------------------------------------------------------------------- */
-/* 1. Add New Customer                                                   */
-/* --------------------------------------------------------------------- */
+
+// 1. Add New Customer
 int addNewCustomer(int socket_fd) {
     char username[MAX_USERNAME_LEN];
     char password[MAX_PASSWORD_LEN];
     double initial_balance;
 
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0 ||
-        read_string_from_socket(socket_fd, password, MAX_PASSWORD_LEN) != 0) {
-        send_response(socket_fd, "Error reading input\n");
+    /* Read username */
+    if (read_line_from_socket(socket_fd, username, sizeof(username)) != 0) {
+        send_response(socket_fd, "Error reading username\n");
         return -1;
     }
+    username[strcspn(username, "\n")] = '\0';
+
+    /* Read password */
+    if (read_line_from_socket(socket_fd, password, sizeof(password)) != 0) {
+        send_response(socket_fd, "Error reading password\n");
+        return -1;
+    }
+    password[strcspn(password, "\n")] = '\0';
+
+    /* Validate */
+    if (strlen(username) == 0 || strlen(password) == 0) {
+        send_response(socket_fd, "Username and password required\n");
+        return -1;
+    }
+
     initial_balance = read_amount_from_socket(socket_fd);
     if (initial_balance < 0) {
         send_response(socket_fd, "Invalid initial balance\n");
         return -1;
     }
 
-    /* ---- users.dat ---- */
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) { send_response(socket_fd, "Lock users.dat failed\n"); return -1; }
 
     if (find_user_by_username(username) != NULL) {
@@ -52,7 +66,7 @@ int addNewCustomer(int socket_fd) {
     User new_user = {0};
     new_user.id = uhdr.next_id++;
     strncpy(new_user.username, username, MAX_USERNAME_LEN-1);
-    strncpy(new_user.password_hash, password, MAX_PASSWORD_LEN-1);   // plain-text for demo
+    strncpy(new_user.password_hash, password, MAX_PASSWORD_LEN-1); 
     new_user.role = ROLE_CUSTOMER;
     new_user.active = 1;
     new_user.last_login = 0;
@@ -66,7 +80,7 @@ int addNewCustomer(int socket_fd) {
     unlock_file(users_fd);
 
     /* ---- accounts.dat ---- */
-    int accounts_fd = lock_file("accounts.dat", F_WRLCK);
+    int accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
     if (accounts_fd == -1) { send_response(socket_fd, "Lock accounts.dat failed\n"); return -1; }
 
     AccountHeader ahdr;
@@ -89,9 +103,8 @@ int addNewCustomer(int socket_fd) {
     return 0;
 }
 
-/* --------------------------------------------------------------------- */
-/* 2. Edit Customer Details                                              */
-/* --------------------------------------------------------------------- */
+
+// 2. Edit Customer Details
 int editCustomerDetails(int socket_fd) {
     char username[MAX_USERNAME_LEN];
     if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
@@ -99,7 +112,7 @@ int editCustomerDetails(int socket_fd) {
         return -1;
     }
 
-    int users_fd = lock_file("users.dat", F_WRLCK);
+    int users_fd = lock_file("data/users.dat", F_WRLCK);
     if (users_fd == -1) { send_response(socket_fd, "Lock users.dat failed\n"); return -1; }
 
     User *u = find_user_by_username(username);
@@ -170,7 +183,7 @@ int approveRejectLoans(int employee_id, int socket_fd) {
     }
     loan_id = atoi(buf);
 
-    int loans_fd = lock_file("loans.dat", F_WRLCK);
+    int loans_fd = lock_file("data/loans.dat", F_WRLCK);
     if (loans_fd == -1) { send_response(socket_fd, "Lock loans.dat failed\n"); return -1; }
 
     LoanHeader lhdr;
@@ -231,7 +244,7 @@ int approveRejectLoans(int employee_id, int socket_fd) {
 /* 4. View Assigned Loan Applications                                    */
 /* --------------------------------------------------------------------- */
 int viewAssignedLoanApplications(int employee_id, int socket_fd) {
-    int fd = lock_file("loans.dat", F_RDLCK);
+    int fd = lock_file("data/loans.dat", F_RDLCK);
     if (fd == -1) { send_response(socket_fd, "Lock loans.dat failed\n"); return -1; }
 
     LoanHeader hdr;
@@ -301,7 +314,7 @@ int assignLoanToEmployee(int manager_id, int loan_id, int employee_id, int socke
         return -1;
     }
 
-    int fd = lock_file("loans.dat", F_WRLCK);
+    int fd = lock_file("data/loans.dat", F_WRLCK);
     if (fd == -1) { send_response(socket_fd, "Lock loans.dat failed\n"); return -1; }
 
     LoanHeader hdr;
@@ -338,7 +351,7 @@ int assignLoanToEmployee(int manager_id, int loan_id, int employee_id, int socke
 /* 7. View All Feedback                                                  */
 /* --------------------------------------------------------------------- */
 int viewAllFeedback(int socket_fd) {
-    int fd = lock_file("feedback.dat", F_RDLCK);
+    int fd = lock_file("data/feedback.dat", F_RDLCK);
     if (fd == -1) { send_response(socket_fd, "Lock feedback.dat failed\n"); return -1; }
 
     FeedbackHeader hdr;
