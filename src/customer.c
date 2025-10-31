@@ -97,15 +97,9 @@ int applyLoan(int customer_id, int socket_fd) {
         return -1;
     }
     double loanAmt;
-    // printf("Enter loan amount: \n");
-    // scanf("%lf", loanAmt);
-    if (read_amount_from_socket(socket_fd) != 0) {
-        send_response(socket_fd, "Error reading loanAmt username\n");
-        return -1;
-    }
+    loanAmt = read_amount_from_socket(socket_fd);
     if (loanAmt <= 0) {
-        char *err_msg = "Invalid loan amount\n";
-        write(socket_fd, err_msg, strlen(err_msg));
+        send_response(socket_fd, "Invalid loan amount\n");
         return -1;
     }
     Loan new_loan = {
@@ -213,7 +207,7 @@ int viewTransactionHistory(int user_id, int socket_fd) {
     unlock_file(transactions_fd);
 
     // Send footer
-    snprintf(buffer, sizeof(buffer), "End of Transaction History\n");
+    snprintf(buffer, sizeof(buffer), "--- End of Transaction History ---\n");
     send_response(socket_fd, buffer);
     return 0;
 }

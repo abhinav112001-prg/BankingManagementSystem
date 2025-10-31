@@ -54,6 +54,7 @@ int addEmployee(int socket_fd) {
 
     User new_user = {0};
     new_user.id = hdr.next_id++;
+    hdr.record_count++;
     strncpy(new_user.username, username, MAX_USERNAME_LEN - 1);
     strncpy(new_user.password_hash, password, MAX_PASSWORD_LEN - 1);
     new_user.role = ROLE_EMPLOYEE;
@@ -116,6 +117,7 @@ int addManager(int socket_fd) {
 
     User new_user = {0};
     new_user.id = hdr.next_id++;
+    hdr.record_count++;
     strncpy(new_user.username, username, MAX_USERNAME_LEN - 1);
     strncpy(new_user.password_hash, password, MAX_PASSWORD_LEN - 1);
     new_user.role = ROLE_MANAGER;
@@ -172,6 +174,7 @@ int viewAllUsers(int socket_fd) {
         send_response(socket_fd, line);
     }
     unlock_file(fd);
+        send_response(socket_fd, "--- End of User List ---\n"); 
     return 0;
 }
 
@@ -180,7 +183,8 @@ int viewAllUsers(int socket_fd) {
 /* --------------------------------------------------------------------- */
 int deactivateUser(int admin_id, int socket_fd) {
     char username[MAX_USERNAME_LEN];
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
+    
+    if (read_line_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
         send_response(socket_fd, "Error reading username\n");
         return -1;
     }
@@ -209,7 +213,8 @@ int deactivateUser(int admin_id, int socket_fd) {
     }
 
     u->active = 0;
-    lseek(users_fd, sizeof(UserHeader) + (u->id - 1) * sizeof(User), SEEK_SET);
+    
+    lseek(users_fd, sizeof(UserHeader) + (u->id) * sizeof(User), SEEK_SET);
     write(users_fd, u, sizeof(User));
     fsync(users_fd);
     unlock_file(users_fd);
@@ -223,7 +228,7 @@ int deactivateUser(int admin_id, int socket_fd) {
 /* --------------------------------------------------------------------- */
 int reactivateUser(int admin_id, int socket_fd) {
     char username[MAX_USERNAME_LEN];
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
+    if (read_line_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
         send_response(socket_fd, "Error reading username\n");
         return -1;
     }
@@ -247,7 +252,8 @@ int reactivateUser(int admin_id, int socket_fd) {
     }
 
     u->active = 1;
-    lseek(users_fd, sizeof(UserHeader) + (u->id - 1) * sizeof(User), SEEK_SET);
+    // lseek(users_fd, sizeof(UserHeader) + (u->id - 1) * sizeof(User), SEEK_SET);
+    lseek(users_fd, sizeof(UserHeader) + (u->id) * sizeof(User), SEEK_SET);
     write(users_fd, u, sizeof(User));
     fsync(users_fd);
     unlock_file(users_fd);

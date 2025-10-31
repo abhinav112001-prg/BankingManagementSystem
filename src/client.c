@@ -117,8 +117,13 @@ static void customer_menu(int sock)
             }
             case 7: // HISTORY
                 snprintf(buffer, sizeof(buffer), "HISTORY");
-                write(sock, buffer, strlen(buffer)); // 1. Send command
-                break;
+                write(sock, buffer, strlen(buffer));
+                while (read_line(sock, buffer, sizeof(buffer)) == 0) {
+                    printf("%s", buffer);
+                    if (strstr(buffer, "--- End of Transaction History ---") != NULL)
+                        break;
+                }
+                continue;
 
             case 8: // EXIT
                 snprintf(buffer, sizeof(buffer), "EXIT");
@@ -201,7 +206,13 @@ static void admin_menu(int sock)
             case 3: // VIEW_USERS
                 snprintf(buffer, sizeof(buffer), "VIEW_USERS");
                 write(sock, buffer, strlen(buffer));
-                break;
+                
+                while (read_line(sock, buffer, sizeof(buffer)) == 0) {
+                    printf("%s", buffer);    
+                    if (strstr(buffer, "--- End of User List ---") != NULL)
+                        break;
+                }
+                continue;
 
             case 4: // DEACTIVATE
                 printf("Username to deactivate: ");
@@ -222,7 +233,13 @@ static void admin_menu(int sock)
             case 6: // VIEW_LOGS
                 snprintf(buffer, sizeof(buffer), "VIEW_LOGS");
                 write(sock, buffer, strlen(buffer));
-                break;
+                while (read_line(sock, buffer, sizeof(buffer)) == 0) {
+                    printf("%s", buffer);
+                    // viewSystemLogs already sends an "End of Log" token
+                    if (strstr(buffer, "=== End of Log ===") != NULL)
+                        break;
+                }
+                continue;
 
             case 7: // EXIT
                 snprintf(buffer, sizeof(buffer), "EXIT");
@@ -237,8 +254,8 @@ static void admin_menu(int sock)
                 continue; // Skip the write/read block
         }
 
-        // Common read block for cases 1-6
-        if (choice >= 1 && choice <= 6) {
+        // Common read block for cases 1,2,4,5
+        if (choice == 1 || choice == 2 || choice == 4 || choice == 5) {
             if (read_line(sock, buffer, sizeof(buffer)) == 0)
                 printf("%s", buffer);
         }
@@ -326,18 +343,23 @@ static void employee_menu(int sock)
             case 3: // MY_LOANS
                 snprintf(buffer, sizeof(buffer), "MY_LOANS");
                 write(sock, buffer, strlen(buffer));
-                if (read_line(sock, buffer, sizeof(buffer)) == 0)
+                while (read_line(sock, buffer, sizeof(buffer)) == 0) {
                     printf("%s", buffer);
-                break; 
+                    if (strstr(buffer, "--- End of Loan List ---") != NULL)
+                        break;
+                }
+                continue;
 
             case 4: { // LOAN_DECIDE
                 snprintf(buffer, sizeof(buffer), "LOAN_DECIDE");
                 write(sock, buffer, strlen(buffer)); // 1. Send command
 
-                // Server sends the list of loans
-                if (read_line(sock, buffer, sizeof(buffer)) == 0)
-                    printf("%s", buffer); // Print the loan list
-
+                // Server sends list of loans
+                while (read_line(sock, buffer, sizeof(buffer)) == 0) {
+                    printf("%s", buffer);
+                    if (strstr(buffer, "--- End of Loan List ---") != NULL)
+                        break;
+                }
                 printf("Enter Loan ID to decide on: ");
                 fgets(buffer, sizeof(buffer), stdin);
                 write(sock, buffer, strlen(buffer)); // 2. Send loan ID

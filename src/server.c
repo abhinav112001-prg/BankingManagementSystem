@@ -30,12 +30,9 @@ void init_database(void)
         "feedback.dat",
         "sessions.dat"
     };
-
     const char *data_dir = "data";
     char path[256];
-
-    
-    for (int i=0; i<6; i++) {
+    for (int i=0; i<5; i++) {
         snprintf(path, sizeof(path), "%s/%s", data_dir, filenames[i]);
 
         int fd = open(path, O_RDWR | O_CREAT, 0644);
@@ -44,38 +41,58 @@ void init_database(void)
             fprintf(stderr, "File: %s\n", path);
             exit(1);
         }
-
         if (lseek(fd, 0, SEEK_END) == 0) {
-            UserHeader header = { .next_id = 1, .record_count = 0 };
+            UserHeader header = { .next_id = 0, .record_count = 0 };
             write(fd, &header, sizeof(UserHeader));
             fsync(fd);
         }
-
         close(fd);
     }
+    snprintf(path, sizeof(path), "%s/sessions.dat", data_dir);
+    int fd = open(path, O_RDWR | O_CREAT, 0644);
+    if (fd == -1) {
+        perror("Failed to create sessions.dat");
+        exit(1);
+    }
+    close(fd);
 }
 
 void create_initial_admin() {
     if (find_user_by_username("admin") != NULL) return;
 
-    int fd = open("data/users.dat", O_RDWR|O_CREAT);
-    if (fd == -1) return;
+    int fd = lock_file("data/users.dat", F_WRLCK);
+    if (fd == -1) {
+        perror("Failed to lock users.dat for admin creation");
+        return;
+    }
 
-    UserHeader hdr = { .next_id = 1, .record_count = 0 };
-    lseek(fd, 0, SEEK_SET);
-    write(fd, &hdr, sizeof(UserHeader));
+    UserHeader hdr;
+    lseek(fd, 0, SEEK_SET); // Go to start
+    if (read(fd, &hdr, sizeof(UserHeader)) != sizeof(UserHeader)) {
+        hdr.next_id = 0;
+        hdr.record_count = 0;
+    }
+
+    // Only create admin if no other users exist
+    if (hdr.next_id != 0) {
+        unlock_file(fd);
+        return; // Some user (maybe admin) already exists.
+    }
 
     User admin = {0};
-    admin.id = 1;
-    strcpy(admin.username, "admin");
-    strcpy(admin.password_hash, "admin123");  // Change later!
+    admin.id = hdr.next_id++; // Use ID 0, increment next_id to 1
+    hdr.record_count++;
+
+    strncpy(admin.username, "admin", MAX_USERNAME_LEN - 1);
+    strncpy(admin.password_hash, "admin123", MAX_PASSWORD_LEN - 1);
     admin.role = ROLE_ADMIN;
     admin.active = 1;
-
-    lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET); // Rewind to write updated header
+    write(fd, &hdr, sizeof(UserHeader));
+    lseek(fd, 0, SEEK_END); // Go to end to append user
     write(fd, &admin, sizeof(User));
     fsync(fd);
-    close(fd);
+    unlock_file(fd);
 }
 
 

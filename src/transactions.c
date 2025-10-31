@@ -12,7 +12,6 @@
 
 int deposit (int customer_id, double amount, int socket_fd) {
     int accounts_fd, transactions_fd;
-    struct flock lock;
     Account *account;
     TransactionRecord transaction;
 
@@ -37,13 +36,17 @@ int deposit (int customer_id, double amount, int socket_fd) {
         return -1;
     }
 
-    // Update balance
+    // Update balance (using the 0-based ID fix)
     double new_balance = account->balance + amount;
-    if (update_account(accounts_fd, account, new_balance) != 0) {
+    lseek(accounts_fd, sizeof(AccountHeader) + (account->accountID) * sizeof(Account), SEEK_SET);
+    account->balance = new_balance;
+    account->transaction_count++;
+    if (write(accounts_fd, account, sizeof(Account)) != sizeof(Account)) {
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to update account\n");
         return -1;
     }
+    fsync(accounts_fd);
 
     // Unlock accounts.dat
     unlock_file(accounts_fd);
@@ -53,16 +56,27 @@ int deposit (int customer_id, double amount, int socket_fd) {
     if (transactions_fd == -1) {
         // Rollback: Subtract amount back
         accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
-        update_account(accounts_fd, account, account->balance - amount);
+        // Re-find account to be safe
+        account = find_account_by_user_id(customer_id); 
+        if(account != NULL) {
+            account->balance = account->balance - amount;
+            account->transaction_count++; // Log rollback
+            lseek(accounts_fd, sizeof(AccountHeader) + (account->accountID) * sizeof(Account), SEEK_SET);
+            write(accounts_fd, account, sizeof(Account));
+            fsync(accounts_fd);
+        }
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to log transaction\n");
         return -1;
     }
 
-    // Prepare transaction
+    // --- FIXED HEADER LOGIC ---
     TransactionHeader trans_header;
-    read(transactions_fd, &trans_header, sizeof(TransactionHeader));
-    transaction.transactionID = trans_header.next_id++;
+    lseek(transactions_fd, 0, SEEK_SET); // 1. Go to start
+    read(transactions_fd, &trans_header, sizeof(TransactionHeader)); // 2. Read header
+
+    // Prepare transaction
+    transaction.transactionID = trans_header.next_id++; // 3. Use and increment ID
     transaction.accountID = account->accountID;
     transaction.timestamp = time(NULL);
     snprintf(transaction.description, MAX_DESCRIPTION_LEN, "Deposit %.2f", amount);
@@ -73,10 +87,13 @@ int deposit (int customer_id, double amount, int socket_fd) {
     // Append transaction
     lseek(transactions_fd, 0, SEEK_END);
     write(transactions_fd, &transaction, sizeof(TransactionRecord));
+
+    // 4. Increment count and write header back
     lseek(transactions_fd, 0, SEEK_SET);
     trans_header.record_count++;
     write(transactions_fd, &trans_header, sizeof(TransactionHeader));
     fsync(transactions_fd);
+    // --- END FIXED LOGIC ---
 
     // Unlock transactions.dat
     unlock_file(transactions_fd);
@@ -85,10 +102,9 @@ int deposit (int customer_id, double amount, int socket_fd) {
     return 0;
 }
 
-// Withdraw function
+// Withdraw 
 int withdraw(int customer_id, double amount, int socket_fd) {
     int accounts_fd, transactions_fd;
-    struct flock lock;
     Account *account;
     TransactionRecord transaction;
 
@@ -120,13 +136,17 @@ int withdraw(int customer_id, double amount, int socket_fd) {
         return -1;
     }
 
-    // Update balance
+    // Update balance (using the 0-based ID fix)
     double new_balance = account->balance - amount;
-    if (update_account(accounts_fd, account, new_balance) != 0) {
+    lseek(accounts_fd, sizeof(AccountHeader) + (account->accountID) * sizeof(Account), SEEK_SET);
+    account->balance = new_balance;
+    account->transaction_count++;
+    if (write(accounts_fd, account, sizeof(Account)) != sizeof(Account)) {
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to update account\n");
         return -1;
     }
+    fsync(accounts_fd);
 
     // Unlock accounts.dat
     unlock_file(accounts_fd);
@@ -136,16 +156,27 @@ int withdraw(int customer_id, double amount, int socket_fd) {
     if (transactions_fd == -1) {
         // Rollback: Add amount back
         accounts_fd = lock_file("data/accounts.dat", F_WRLCK);
-        update_account(accounts_fd, account, account->balance + amount);
+        // Re-find account to be safe
+        account = find_account_by_user_id(customer_id);
+        if(account != NULL) {
+            account->balance = account->balance + amount;
+            account->transaction_count++; // Log rollback
+            lseek(accounts_fd, sizeof(AccountHeader) + (account->accountID) * sizeof(Account), SEEK_SET);
+            write(accounts_fd, account, sizeof(Account));
+            fsync(accounts_fd);
+        }
         unlock_file(accounts_fd);
         send_response(socket_fd, "Failed to log transaction\n");
         return -1;
     }
 
-    // Prepare transaction
+    // --- FIXED HEADER LOGIC ---
     TransactionHeader trans_header;
-    read(transactions_fd, &trans_header, sizeof(TransactionHeader));
-    transaction.transactionID = trans_header.next_id++;
+    lseek(transactions_fd, 0, SEEK_SET); // 1. Go to start
+    read(transactions_fd, &trans_header, sizeof(TransactionHeader)); // 2. Read header
+
+    // Prepare transaction
+    transaction.transactionID = trans_header.next_id++; // 3. Use and increment ID
     transaction.accountID = account->accountID;
     transaction.timestamp = time(NULL);
     snprintf(transaction.description, MAX_DESCRIPTION_LEN, "Withdrawal %.2f", amount);
@@ -156,10 +187,13 @@ int withdraw(int customer_id, double amount, int socket_fd) {
     // Append transaction
     lseek(transactions_fd, 0, SEEK_END);
     write(transactions_fd, &transaction, sizeof(TransactionRecord));
+
+    // 4. Increment count and write header back
     lseek(transactions_fd, 0, SEEK_SET);
     trans_header.record_count++;
     write(transactions_fd, &trans_header, sizeof(TransactionHeader));
     fsync(transactions_fd);
+    // --- END FIXED LOGIC ---
 
     // Unlock transactions.dat
     unlock_file(transactions_fd);
@@ -197,7 +231,8 @@ int log_transaction(int account_id, const char *description, double amount, doub
 
 // Helper: Update account balance and transaction count
 int update_account(int fd, Account *account, double new_balance) {
-    lseek(fd, sizeof(AccountHeader) + (account->accountID - 1) * sizeof(Account), SEEK_SET);
+    
+    lseek(fd, sizeof(AccountHeader) + (account->accountID) * sizeof(Account), SEEK_SET);
     account->balance = new_balance;
     account->transaction_count++;
     if (write(fd, account, sizeof(Account)) != sizeof(Account)) {
@@ -215,7 +250,7 @@ int transferFunds(int customer_id, int socket_fd) {
     Account *sender_account, *recipient_account;
 
     // Read input from socket
-    if (read_string_from_socket(socket_fd, recipient_username, MAX_USERNAME_LEN) != 0) {
+    if (read_line_from_socket(socket_fd, recipient_username, MAX_USERNAME_LEN) != 0) {
         send_response(socket_fd, "Error reading recipient username\n");
         return -1;
     }

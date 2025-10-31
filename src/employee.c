@@ -87,6 +87,7 @@ int addNewCustomer(int socket_fd) {
     read(accounts_fd, &ahdr, sizeof(AccountHeader));
     Account new_acc = {0};
     new_acc.accountID = ahdr.next_id++;
+    ahdr.record_count++;
     new_acc.userID   = new_user.id;
     new_acc.balance  = initial_balance;
     new_acc.transaction_count = 0;
@@ -107,7 +108,7 @@ int addNewCustomer(int socket_fd) {
 // 2. Edit Customer Details
 int editCustomerDetails(int socket_fd) {
     char username[MAX_USERNAME_LEN];
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
+    if (read_line_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
         send_response(socket_fd, "Error reading username\n");
         return -1;
     }
@@ -130,7 +131,7 @@ int editCustomerDetails(int socket_fd) {
     send_response(socket_fd, buf);
 
     char new_user[MAX_USERNAME_LEN];
-    if (read_string_from_socket(socket_fd, new_user, MAX_USERNAME_LEN) != 0 ||
+    if (read_line_from_socket(socket_fd, new_user, MAX_USERNAME_LEN) != 0 ||
         new_user[0] != '.') {
         /* change username */
         if (find_user_by_username(new_user) != NULL) {
@@ -143,7 +144,7 @@ int editCustomerDetails(int socket_fd) {
 
     send_response(socket_fd, "Enter new password (or . to keep): ");
     char new_pass[MAX_PASSWORD_LEN];
-    if (read_string_from_socket(socket_fd, new_pass, MAX_PASSWORD_LEN) != 0 ||
+    if (read_line_from_socket(socket_fd, new_pass, MAX_PASSWORD_LEN) != 0 ||
         new_pass[0] != '.') {
         strncpy(u->password_hash, new_pass, MAX_PASSWORD_LEN-1);
     }
@@ -151,14 +152,15 @@ int editCustomerDetails(int socket_fd) {
     send_response(socket_fd, "Set active (1/0): ");
     int active;
     char act_buf[8];
-    if (read_string_from_socket(socket_fd, act_buf, sizeof(act_buf)) == 0)
+    if (read_line_from_socket(socket_fd, act_buf, sizeof(act_buf)) == 0)
         active = atoi(act_buf);
     else
         active = u->active;
     u->active = (active == 0) ? 0 : 1;
 
     /* rewrite the record */
-    lseek(users_fd, sizeof(UserHeader) + (u->id-1)*sizeof(User), SEEK_SET);
+    // lseek(users_fd, sizeof(UserHeader) + (u->id-1)*sizeof(User), SEEK_SET);
+    lseek(users_fd, sizeof(UserHeader) + (u->id)*sizeof(User), SEEK_SET);
     write(users_fd, u, sizeof(User));
     fsync(users_fd);
     unlock_file(users_fd);
@@ -273,6 +275,7 @@ int viewAssignedLoanApplications(int employee_id, int socket_fd) {
         }
     }
     if (count == 0) send_response(socket_fd, "(none)\n");
+    send_response(socket_fd, "--- End of Loan List ---\n");
     unlock_file(fd);
     return 0;
 }
@@ -282,7 +285,7 @@ int viewAssignedLoanApplications(int employee_id, int socket_fd) {
 /* --------------------------------------------------------------------- */
 int viewCustomerTransactions(int socket_fd) {
     char username[MAX_USERNAME_LEN];
-    if (read_string_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
+    if (read_line_from_socket(socket_fd, username, MAX_USERNAME_LEN) != 0) {
         send_response(socket_fd, "Error reading username\n");
         return -1;
     }
