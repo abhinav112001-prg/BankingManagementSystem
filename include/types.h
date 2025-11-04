@@ -21,7 +21,7 @@ enum LoanStatus {
     LOAN_REJECTED
 };
 
-// TRANSACTION
+// TRANSACTION [unused]
 typedef struct {
     time_t timestamp;
     char description[100];  // e.g., "Deposit 1000"

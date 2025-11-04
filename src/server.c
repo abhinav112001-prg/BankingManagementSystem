@@ -259,8 +259,6 @@ void *handle_client(void *arg) {
         }
 
         else if (role == ROLE_MANAGER) {
-            // ***THIS IS THE FIX***
-            // We use a simple sscanf for consistency
             char cmd[32];
             sscanf(buffer, "%s", cmd);
 

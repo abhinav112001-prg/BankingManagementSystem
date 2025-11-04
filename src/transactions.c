@@ -70,7 +70,6 @@ int deposit (int customer_id, double amount, int socket_fd) {
         return -1;
     }
 
-    // --- FIXED HEADER LOGIC ---
     TransactionHeader trans_header;
     lseek(transactions_fd, 0, SEEK_SET); // 1. Go to start
     read(transactions_fd, &trans_header, sizeof(TransactionHeader)); // 2. Read header
@@ -93,7 +92,6 @@ int deposit (int customer_id, double amount, int socket_fd) {
     trans_header.record_count++;
     write(transactions_fd, &trans_header, sizeof(TransactionHeader));
     fsync(transactions_fd);
-    // --- END FIXED LOGIC ---
 
     // Unlock transactions.dat
     unlock_file(transactions_fd);
@@ -170,7 +168,6 @@ int withdraw(int customer_id, double amount, int socket_fd) {
         return -1;
     }
 
-    // --- FIXED HEADER LOGIC ---
     TransactionHeader trans_header;
     lseek(transactions_fd, 0, SEEK_SET); // 1. Go to start
     read(transactions_fd, &trans_header, sizeof(TransactionHeader)); // 2. Read header
@@ -193,7 +190,6 @@ int withdraw(int customer_id, double amount, int socket_fd) {
     trans_header.record_count++;
     write(transactions_fd, &trans_header, sizeof(TransactionHeader));
     fsync(transactions_fd);
-    // --- END FIXED LOGIC ---
 
     // Unlock transactions.dat
     unlock_file(transactions_fd);

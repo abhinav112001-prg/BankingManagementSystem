@@ -1,4 +1,4 @@
-/* src/dbdump.c - Database Dump Utility */
+/* Database Dump Utility */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,8 +31,11 @@ void print_transaction(TransactionRecord *t) {
     char time_str[30];
     struct tm *tm = localtime(&t->timestamp);
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", tm);
+    // printf("  [TxID:%-3d] AccID:%-3d | %.2f | %s\n",
+    //        t->transactionID, t->accountID, t->amount, time_str);
     printf("  [TxID:%-3d] AccID:%-3d | %.2f | %s | %s\n",
            t->transactionID, t->accountID, t->amount, t->description, time_str);
+                  
 }
 
 void print_loan(Loan *l) {
@@ -108,7 +111,7 @@ int main() {
 
     dump_file("users.dat",       "USERS",          (void(*)(void*))print_user,       sizeof(User),       sizeof(UserHeader));
     dump_file("accounts.dat",    "ACCOUNTS",       (void(*)(void*))print_account,    sizeof(Account),    sizeof(AccountHeader));
-    dump_file("transactions.dat","TRANSACTIONS",   (void(*)(void*))print_transaction,sizeof(Transaction),sizeof(TransactionHeader));
+    dump_file("transactions.dat","TRANSACTIONS",   (void(*)(void*))print_transaction,sizeof(TransactionRecord),sizeof(TransactionHeader));
     dump_file("loans.dat",       "LOANS",          (void(*)(void*))print_loan,       sizeof(Loan),       sizeof(LoanHeader));
     dump_file("feedback.dat",    "FEEDBACK",       (void(*)(void*))print_feedback,   sizeof(Feedback),   sizeof(FeedbackHeader));
     dump_file("sessions.dat",    "SESSIONS",       (void(*)(void*))print_session,    sizeof(Session),    sizeof(LoanHeader));
